@@ -1,0 +1,112 @@
+# ======================================================
+# TASK 2 - Multi Environment Docker Compose
+# ======================================================
+
+services:
+
+  # ====================================================
+  # CUSTOMER APPLICATION
+  # ====================================================
+  app:
+
+    # Build application image from Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Container name comes from environment file
+    container_name: ${APP_CONTAINER}
+
+    # Application configuration
+    environment:
+      PORT: 3000
+      APP_ENV: ${APP_ENV}
+      APP_VERSION: ${APP_VERSION}
+
+      # IMPORTANT:
+      # App connects to DB using Docker container name
+      # NOT localhost
+      DB_HOST: ${DB_HOST}
+      DB_PORT: 5432
+      DB_NAME: customerdb
+      DB_USER: customeruser
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    # Host port -> Container port
+    # DEV  = 8081:3000
+    # UAT  = 8082:3000
+    # PROD = 8083:3000
+    ports:
+      - "${HOST_PORT}:3000"
+
+    # Start application only after DB is healthy
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # App joins environment-specific network
+    networks:
+      - customer-network
+
+
+  # ====================================================
+  # POSTGRES DATABASE
+  # ====================================================
+  db:
+
+    # PostgreSQL image
+    image: postgres:16-alpine
+
+    # Database container name
+    container_name: ${DB_CONTAINER}
+
+    # PostgreSQL configuration
+    environment:
+      POSTGRES_DB: customerdb
+      POSTGRES_USER: customeruser
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    # Persistent database storage
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+      # Initialize database tables/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    # DB joins same environment network
+    networks:
+      - customer-network
+
+    # Database health check
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U customeruser -d customerdb"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+# ======================================================
+# DOCKER NETWORK
+# ======================================================
+networks:
+
+  # Fixed Compose service network name
+  customer-network:
+    name: ${DOCKER_NETWORK}
+
+
+# ======================================================
+# DOCKER VOLUME
+# ======================================================
+volumes:
+
+  # IMPORTANT:
+  # This is a fixed Compose key.
+  # The actual Docker volume name comes from DB_VOLUME.
+  db-data:
+    name: ${DB_VOLUME}
+    external: true
