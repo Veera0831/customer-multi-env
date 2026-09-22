@@ -99,47 +99,31 @@ app.get("/version", (req, res) => {
 // ======================================================
 
 app.get("/customers/search", async (req, res) => {
-
     const name = req.query.name || "";
 
-    try {
+    if (!name.trim()) {
+        return res.status(400).json({
+            error: "Search name is required"
+        });
+    }
 
+    try {
         const result = await pool.query(
             "SELECT id, name, email FROM customers WHERE name ILIKE $1",
-            [`%${name}%`]
+            [`%${name.trim()}%`]
         );
 
         res.json({
             environment: APP_ENV,
             version: APP_VERSION,
+            search: name.trim(),
             count: result.rows.length,
             customers: result.rows
         });
-
     } catch (error) {
-
         res.status(500).json({
             error: "Customer search failed",
             details: error.message
         });
-
     }
-
-});
-
-// ======================================================
-// START APPLICATION
-// ======================================================
-
-app.listen(PORT, () => {
-
-    console.log("==========================================");
-    console.log("Customer Application Started");
-    console.log("==========================================");
-    console.log("Environment:", APP_ENV);
-    console.log("Version:", APP_VERSION);
-    console.log("Port:", PORT);
-    console.log("Database Host:", DB_HOST);
-    console.log("==========================================");
-
 });
