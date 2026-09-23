@@ -8,21 +8,24 @@ pipeline {
 
     agent any
 
-    // ======================================================
-    // PARAMETERS
-    // ======================================================
-
     parameters {
-
         choice(
             name: 'ENVIRONMENT',
-            choices: [
-                'DEV',
-                'UAT',
-                'PRODUCTION'
-            ],
-            description: 'Select deployment environment'
+            choices: ['dev', 'test', 'prod'],
+            description: 'Select environment'
         )
+    }
+
+    stages {
+
+        stage('Build') {
+            steps {
+                echo "Environment: ${params.ENVIRONMENT}"
+            }
+        }
+
+    }
+}
 
         choice(
             name: 'ACTION',
