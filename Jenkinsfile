@@ -91,5 +91,10 @@ pipeline {
                 echo "Selected branch: ${env.GIT_BRANCH_NAME}"
             }
         }
+    
+stage('Docker Check') {
+    steps {
+        bat 'docker version'
+        bat 'docker ps'
     }
 }
