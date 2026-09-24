@@ -149,23 +149,24 @@ pipeline {
                                 echo Database volume ${env.DB_VOLUME} already exists
                             )
 
-                            docker ps -a --format "{{.Names}}" | findstr /x "${env.DB_NAME}" >nul 2>&1
-                            if errorlevel 1 (
-                                echo Creating database container ${env.DB_NAME}
+                            docker inspect ${env.DB_NAME} >nul 2>&1
 
-                                docker run -d ^
-                                  --name ${env.DB_NAME} ^
-                                  --network ${env.NETWORK_NAME} ^
-                                  -e POSTGRES_DB=customerdb ^
-                                  -e POSTGRES_USER=customeruser ^
-                                  -e POSTGRES_PASSWORD="%DB_PASSWORD%" ^
-                                  -v ${env.DB_VOLUME}:/var/lib/postgresql/data ^
-                                  postgres:16-alpine
-                            ) else (
-                                echo Database container ${env.DB_NAME} already exists
+if errorlevel 1 (
+    echo Creating database container ${env.DB_NAME}
 
-                                docker start ${env.DB_NAME} >nul 2>&1
-                            )
+    docker run -d ^
+      --name ${env.DB_NAME} ^
+      --network ${env.NETWORK_NAME} ^
+      -e POSTGRES_DB=customerdb ^
+      -e POSTGRES_USER=customeruser ^
+      -e POSTGRES_PASSWORD="%DB_PASSWORD%" ^
+      -v ${env.DB_VOLUME}:/var/lib/postgresql/data ^
+      postgres:16-alpine
+) else (
+    echo Database container ${env.DB_NAME} already exists
+
+    docker start ${env.DB_NAME} >nul 2>&1
+)
                         """
                     }
                 }
