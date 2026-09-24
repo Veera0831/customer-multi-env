@@ -174,17 +174,25 @@ if errorlevel 1 (
         }
 
         stage('Database Health Check') {
-            steps {
-                bat """
-                    echo Waiting for database...
+    steps {
+        bat """
+            echo ========================================
+            echo DATABASE HEALTH CHECK
+            echo ========================================
 
-                    timeout /t 10 /nobreak >nul
+            docker exec ${env.DB_NAME} ^
+              pg_isready -U customeruser -d customerdb
 
-                    docker exec ${env.DB_NAME} ^
-                      pg_isready -U customeruser -d customerdb
-                """
-            }
-        }
+            if errorlevel 1 (
+                echo Database health check FAILED
+                exit /b 1
+            )
+
+            echo Database health check PASSED
+            echo ========================================
+        """
+    }
+}
 
         stage('Deploy Application') {
             when {
@@ -233,69 +241,99 @@ if errorlevel 1 (
             }
         }
 
-        stage('Application Validation') {
-            when {
-                expression {
-                    params.ACTION == 'DEPLOY'
-                }
-            }
-
-            steps {
-                bat """
-                    echo ========================================
-                    echo APPLICATION VALIDATION
-                    echo ========================================
-
-                    timeout /t 10 /nobreak >nul
-
-                    docker ps --filter "name=${env.APP_NAME}"
-
-                    echo.
-                    echo Application logs:
-                    docker logs --tail 30 ${env.APP_NAME}
-
-                    echo.
-                    echo Testing application health endpoint...
-
-                    curl.exe -f http://localhost:${env.APP_PORT}/health
-
-                    echo.
-                    echo ========================================
-                    echo APPLICATION HEALTH CHECK PASSED
-                    echo ========================================
-                """
-            }
+stage('Application Validation') {
+    when {
+        expression {
+            params.ACTION == 'DEPLOY'
         }
+    }
+
+    steps {
+        bat """
+            echo ========================================
+            echo APPLICATION VALIDATION
+            echo ========================================
+
+            echo Waiting for application to start...
+
+            set HEALTH_OK=0
+
+            for /L %%i in (1,1,12) do (
+                echo Health check attempt %%i of 12
+
+                curl.exe -f -s http://localhost:${env.APP_PORT}/health > health-response.txt
+
+                if not errorlevel 1 (
+                    set HEALTH_OK=1
+                    type health-response.txt
+                    goto HEALTH_SUCCESS
+                )
+
+                echo Application not ready yet
+                ping 127.0.0.1 -n 3 >nul
+            )
+
+            :HEALTH_SUCCESS
+
+            if "%HEALTH_OK%"=="0" (
+                echo ========================================
+                echo APPLICATION HEALTH CHECK FAILED
+                echo ========================================
+                echo Container logs:
+                docker logs --tail 50 ${env.APP_NAME}
+                del health-response.txt >nul 2>&1
+                exit /b 1
+            )
+
+            echo ========================================
+            echo APPLICATION HEALTH CHECK PASSED
+            echo ========================================
+
+            del health-response.txt >nul 2>&1
+        """
+    }
+}
 
         stage('Database Connectivity Proof') {
-            when {
-                expression {
-                    params.ACTION == 'DEPLOY'
-                }
-            }
-
-            steps {
-                bat """
-                    echo ========================================
-                    echo APP TO DATABASE CONNECTIVITY
-                    echo ========================================
-
-                    docker exec ${env.APP_NAME} ^
-                      node -e "require('dns').lookup('${env.DB_HOST}', console.log)"
-
-                    echo.
-                    echo Database hostname resolved successfully.
-
-                    docker exec ${env.APP_NAME} ^
-                      wget -qO- http://localhost:3000/health
-
-                    echo.
-                    echo ========================================
-                    echo APP TO DATABASE CHECK PASSED
-                    echo ========================================
-                """
-            }
+    when {
+        expression {
+            params.ACTION == 'DEPLOY'
         }
+    }
+
+    steps {
+        bat """
+            echo ========================================
+            echo APP TO DATABASE CONNECTIVITY
+            echo ========================================
+
+            echo Testing Docker DNS resolution...
+
+            docker exec ${env.APP_NAME} ^
+              node -e "require('dns').lookup('${env.DB_HOST}', (err, address) => { if (err) { console.error(err); process.exit(1); } console.log('DB_HOST=${env.DB_HOST} resolved to ' + address); })"
+
+            if errorlevel 1 (
+                echo Database hostname resolution FAILED
+                exit /b 1
+            )
+
+            echo.
+            echo Testing application database health...
+
+            curl.exe -f -s http://localhost:${env.APP_PORT}/health
+
+            if errorlevel 1 (
+                echo Application to database connectivity FAILED
+                exit /b 1
+            )
+
+            echo.
+            echo ========================================
+            echo APP TO DATABASE CHECK PASSED
+            echo ========================================
+        """
+    }
+}
 
         stage('Deployment Summary') {
             steps {
